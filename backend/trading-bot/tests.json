@@ -1,0 +1,34 @@
+{
+  "tests": [
+    {
+      "name": "Get trading signals",
+      "method": "GET",
+      "path": "/?action=signals",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "signals": "array"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get user trades history",
+      "method": "GET",
+      "path": "/?action=trades&user_id=1",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "trades": "array"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get user balance",
+      "method": "GET",
+      "path": "/?action=balance&user_id=1",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "balance": "number"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

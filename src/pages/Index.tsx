@@ -9,6 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import Icon from '@/components/ui/icon';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
+
+const API_URL = 'https://functions.poehali.dev/90a9d869-ec33-42f1-ab3e-e2cde55bdb0f';
 
 interface CurrencyPair {
   id: string;
@@ -33,43 +36,112 @@ interface Trade {
 }
 
 const Index = () => {
+  const { toast } = useToast();
   const [botActive, setBotActive] = useState(false);
   const [balance, setBalance] = useState(1000);
+  const [totalProfit, setTotalProfit] = useState(0);
   const [pocketOptionId, setPocketOptionId] = useState('');
   const [isConnected, setIsConnected] = useState(false);
-
-  const [currencyPairs, setCurrencyPairs] = useState<CurrencyPair[]>([
-    { id: '1', name: 'EUR/USD', price: 1.0875, change: 0.34, volatility: 72, signalType: 'BUY', probability: 87, expiration: '2m' },
-    { id: '2', name: 'GBP/USD', price: 1.2634, change: -0.21, volatility: 65, signalType: 'SELL', probability: 82, expiration: '1m' },
-    { id: '3', name: 'USD/JPY', price: 149.32, change: 0.18, volatility: 58, signalType: 'BUY', probability: 76, expiration: '2m' },
-    { id: '4', name: 'AUD/USD', price: 0.6521, change: 0.45, volatility: 81, signalType: 'BUY', probability: 91, expiration: '1m' },
-    { id: '5', name: 'USD/CHF', price: 0.8834, change: -0.12, volatility: 48, signalType: 'HOLD', probability: 62, expiration: '2m' },
-    { id: '6', name: 'EUR/GBP', price: 0.8605, change: 0.28, volatility: 69, signalType: 'BUY', probability: 79, expiration: '1m' },
-  ]);
-
-  const [trades, setTrades] = useState<Trade[]>([
-    { id: '1', pair: 'EUR/USD', type: 'BUY', openPrice: 1.0850, closePrice: 1.0875, profit: 25, timestamp: '14:32:15', expiration: '2m' },
-    { id: '2', pair: 'GBP/USD', type: 'SELL', openPrice: 1.2650, closePrice: 1.2634, profit: 16, timestamp: '14:30:42', expiration: '1m' },
-    { id: '3', pair: 'USD/JPY', type: 'BUY', openPrice: 149.40, closePrice: 149.32, profit: -8, timestamp: '14:28:10', expiration: '2m' },
-  ]);
-
+  const [currencyPairs, setCurrencyPairs] = useState<CurrencyPair[]>([]);
+  const [trades, setTrades] = useState<Trade[]>([]);
   const [activePosition, setActivePosition] = useState<CurrencyPair | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchSignals = async () => {
+    try {
+      const res = await fetch(`${API_URL}/?action=signals`);
+      const data = await res.json();
+      if (data.signals) {
+        setCurrencyPairs(data.signals.map((s: any, idx: number) => ({
+          id: String(idx + 1),
+          name: s.pair_name,
+          price: parseFloat(s.price),
+          change: parseFloat(s.change_percent),
+          volatility: s.volatility,
+          signalType: s.signal_type,
+          probability: s.probability,
+          expiration: s.expiration
+        })));
+      }
+    } catch (error) {
+      console.error('Error fetching signals:', error);
+    }
+  };
+
+  const fetchTrades = async () => {
+    try {
+      const res = await fetch(`${API_URL}/?action=trades&user_id=1`);
+      const data = await res.json();
+      if (data.trades) {
+        setTrades(data.trades.map((t: any) => ({
+          id: String(t.id),
+          pair: t.pair,
+          type: t.trade_type,
+          openPrice: parseFloat(t.open_price),
+          closePrice: parseFloat(t.close_price || 0),
+          profit: parseFloat(t.profit || 0),
+          timestamp: new Date(t.opened_at).toLocaleTimeString('ru-RU'),
+          expiration: t.expiration
+        })));
+      }
+    } catch (error) {
+      console.error('Error fetching trades:', error);
+    }
+  };
+
+  const fetchBalance = async () => {
+    try {
+      const res = await fetch(`${API_URL}/?action=balance&user_id=1`);
+      const data = await res.json();
+      setBalance(data.balance);
+      setTotalProfit(data.total_profit);
+      setBotActive(data.bot_active);
+      setIsConnected(data.is_connected);
+    } catch (error) {
+      console.error('Error fetching balance:', error);
+    }
+  };
+
+  const saveSettings = async () => {
+    try {
+      const res = await fetch(`${API_URL}/?action=settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pocket_option_id: pocketOptionId,
+          is_connected: isConnected,
+          bot_active: botActive,
+          loss_limit: 5,
+          trade_interval: 1
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast({ title: 'Настройки сохранены', description: 'Параметры бота успешно обновлены' });
+      }
+    } catch (error) {
+      toast({ title: 'Ошибка', description: 'Не удалось сохранить настройки', variant: 'destructive' });
+    }
+  };
 
   useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([fetchSignals(), fetchTrades(), fetchBalance()]);
+      setLoading(false);
+    };
+    loadData();
+
     const interval = setInterval(() => {
-      setCurrencyPairs(prev => prev.map(pair => ({
-        ...pair,
-        price: pair.price + (Math.random() - 0.5) * 0.01,
-        change: parseFloat((pair.change + (Math.random() - 0.5) * 0.1).toFixed(2)),
-        volatility: Math.min(100, Math.max(30, pair.volatility + (Math.random() - 0.5) * 5)),
-      })));
-    }, 2000);
+      fetchSignals();
+      fetchTrades();
+      fetchBalance();
+    }, 5000);
 
     return () => clearInterval(interval);
   }, []);
 
-  const totalProfit = trades.reduce((sum, trade) => sum + trade.profit, 0);
-  const winRate = ((trades.filter(t => t.profit > 0).length / trades.length) * 100).toFixed(1);
+  const winRate = trades.length > 0 ? ((trades.filter(t => t.profit > 0).length / trades.length) * 100).toFixed(1) : '0.0';
 
   const topSignal = [...currencyPairs].sort((a, b) => b.probability - a.probability)[0];
 
@@ -130,6 +202,9 @@ const Index = () => {
                     <Input type="number" defaultValue="1" />
                     <p className="text-xs text-muted-foreground">Минуты между сделками</p>
                   </div>
+                  <Button onClick={saveSettings} className="w-full">
+                    Сохранить настройки
+                  </Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -152,7 +227,7 @@ const Index = () => {
             </div>
             <div className="font-mono text-3xl font-bold">${balance.toFixed(2)}</div>
             <div className={`text-sm mt-1 ${totalProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
-              {totalProfit >= 0 ? '+' : ''}{totalProfit.toFixed(2)} сегодня
+              {totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)} сегодня
             </div>
           </Card>
 
